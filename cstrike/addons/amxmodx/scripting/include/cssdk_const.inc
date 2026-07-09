@@ -72,6 +72,14 @@
 #define FL_DORMANT                      (1<<31) // Entity is dormant, no updates to client
 
 /**
+* global_get(glb_trace_flags) values
+* @note Custom flags that we can retrieve in pfnShouldCollide/TraceLine/TraceHull
+*/
+#define FTRACE_BULLET                   (1<<16)
+#define FTRACE_FLASH                    (1<<17)
+#define FTRACE_KNIFE                    (1<<18)
+
+/**
 * get_entvar(entity, var_movetype) values
 */
 #define MOVETYPE_NONE                   0  // Never moves
@@ -133,39 +141,42 @@
 #define EF_FORCEVISIBILITY              2048 // force visibility
 #define EF_OWNER_VISIBILITY             4096 // visibility for owner
 #define EF_OWNER_NO_VISIBILITY          8192 // no visibility for owner
+#define EF_NOSLERP                      16384 // no slerp flag for this entity (addtofullpack)
+#define EF_FOLLOWKEEPRENDER             32768 // the entity following will not copy the render (like it follows nothing)
 
 /**
 * Break Model Defines
 */
-#define BREAK_TYPEMASK                  0x4F
 #define BREAK_GLASS                     0x01
 #define BREAK_METAL                     0x02
 #define BREAK_FLESH                     0x04
 #define BREAK_WOOD                      0x08
 
-#define BREAK_SMOKE                     0x10
-#define BREAK_TRANS                     0x20
+#define BREAK_SMOKE                     0x10    // generates black floating particles from shards
+#define BREAK_TRANS                     0x20    // transparent shard flag (use with any of BREAK_TYPEMASK)
 #define BREAK_CONCRETE                  0x40
 #define BREAK_2                         0x80
+
+#define BREAK_TYPEMASK                  BREAK_GLASS|BREAK_METAL|BREAK_FLESH|BREAK_WOOD|BREAK_CONCRETE
 
 /**
 * Colliding temp entity sounds
 */
-#define BOUNCE_GLASS                    BREAK_GLASS
-#define BOUNCE_METAL                    BREAK_METAL
-#define BOUNCE_FLESH                    BREAK_FLESH
-#define BOUNCE_WOOD                     BREAK_WOOD
-#define BOUNCE_SHRAP                    0x10
-#define BOUNCE_SHELL                    0x20
-#define BOUNCE_CONCRETE                 BREAK_CONCRETE
-#define BOUNCE_SHOTSHELL                0x80
+#define BOUNCE_GLASS                    BREAK_GLASS     // "debris/glass%i.wav", Com_RandomLong( 1, 4 )
+#define BOUNCE_METAL                    BREAK_METAL     // "debris/metal%i.wav", Com_RandomLong( 1, 6 )
+#define BOUNCE_FLESH                    BREAK_FLESH     // "debris/flesh%i.wav", Com_RandomLong( 1, 7 )
+#define BOUNCE_WOOD                     BREAK_WOOD      // "debris/wood%i.wav", Com_RandomLong( 1, 4 )
+#define BOUNCE_SHRAP                    0x10            // "weapons/ric%i.wav", Com_RandomLong( 1, 5 ) NOTE: unreachable
+#define BOUNCE_SHELL                    0x20            // "player/pl_shell%i.wav", Com_RandomLong( 1, 3 ) 
+#define BOUNCE_CONCRETE                 BREAK_CONCRETE  // "debris/concrete%i.wav", Com_RandomLong( 1, 3 )
+#define BOUNCE_SHOTSHELL                0x80            // "weapons/sshell%i.wav", Com_RandomLong( 1, 3 )
 
 /**
-* Temp entity bounce sound types
+* "Brass" message and TE_MODEL soundtype
 */
-#define TE_BOUNCE_NULL                  0
-#define TE_BOUNCE_SHELL                 1
-#define TE_BOUNCE_SHOTSHELL             2
+#define TE_BOUNCE_NULL                  0 
+#define TE_BOUNCE_SHELL                 1 // gun shell, sound is BOUNCE_SHELL
+#define TE_BOUNCE_SHOTSHELL             2 // shotgun shell, sound is BOUNCE_SHOTSHELL
 
 /**
 * Spectating camera mode constants
@@ -272,6 +283,7 @@
 #define ITEM_FLAG_NOAUTOSWITCHEMPTY     (1<<2)
 #define ITEM_FLAG_LIMITINWORLD          (1<<3)
 #define ITEM_FLAG_EXHAUSTIBLE           (1<<4)
+#define ITEM_FLAG_NOFIREUNDERWATER      (1<<5)
 
 /**
 * @section get_entvar(entity, var_spawnflags) values
@@ -853,7 +865,9 @@ enum
 	GR_PLR_DROP_GUN_NO,
 	GR_PLR_DROP_AMMO_ALL,
 	GR_PLR_DROP_AMMO_ACTIVE,
-	GR_PLR_DROP_AMMO_NO
+	GR_PLR_DROP_AMMO_NO,
+
+	GR_PLR_DROP_GUN_BEST
 };
 
 /**
@@ -897,10 +911,11 @@ enum WeaponIdType
 
 /**
 * For CBaseMonster::m_rgbTimeBasedDamage
+* prefix should be ITBD_
 */
 enum TimeBasedDamage
 {
-	ITDB_PRALYZE,
+	ITDB_PARALYZE,
 	ITDB_NERVEGAS,
 	ITDB_POISON,
 	ITDB_RADIATION,
@@ -1358,3 +1373,218 @@ enum InfoMapBuyParam
 #define SCORE_STATUS_BOMB                 (1<<1)
 #define SCORE_STATUS_VIP                  (1<<2)
 #define SCORE_STATUS_DEFKIT               (1<<3)
+
+/**
+* For RG_CBotManager_OnEvent
+*/
+enum GameEventType
+{
+	EVENT_INVALID = 0,
+	EVENT_WEAPON_FIRED,                 // tell bots the player is attack (argumens: 1 = attacker, 2 = NULL)
+	EVENT_WEAPON_FIRED_ON_EMPTY,        // tell bots the player is attack without clip ammo (argumens: 1 = attacker, 2 = NULL)
+	EVENT_WEAPON_RELOADED,              // tell bots the player is reloading his weapon (argumens: 1 = reloader, 2 = NULL)
+
+	EVENT_HE_GRENADE_EXPLODED,          // tell bots the HE grenade is exploded (argumens: 1 = grenade thrower, 2 = NULL)
+	EVENT_FLASHBANG_GRENADE_EXPLODED,   // tell bots the flashbang grenade is exploded (argumens: 1 = grenade thrower, 2 = explosion origin)
+	EVENT_SMOKE_GRENADE_EXPLODED,       // tell bots the smoke grenade is exploded (argumens: 1 = grenade thrower, 2 = NULL)
+	EVENT_GRENADE_BOUNCED,
+
+	EVENT_BEING_SHOT_AT,
+	EVENT_PLAYER_BLINDED_BY_FLASHBANG,  // tell bots the player is flashed (argumens: 1 = flashed player, 2 = NULL)
+	EVENT_PLAYER_FOOTSTEP,              // tell bots the player is running (argumens: 1 = runner, 2 = NULL)
+	EVENT_PLAYER_JUMPED,                // tell bots the player is jumped (argumens: 1 = jumper, 2 = NULL)
+	EVENT_PLAYER_DIED,                  // tell bots the player is killed (argumens: 1 = victim, 2 = killer)
+	EVENT_PLAYER_LANDED_FROM_HEIGHT,    // tell bots the player is fell with some damage (argumens: 1 = felled player, 2 = NULL)
+	EVENT_PLAYER_TOOK_DAMAGE,           // tell bots the player is take damage (argumens: 1 = victim, 2 = attacker)
+	EVENT_HOSTAGE_DAMAGED,              // tell bots the player has injured a hostage (argumens: 1 = hostage, 2 = injurer)
+	EVENT_HOSTAGE_KILLED,               // tell bots the player has killed a hostage (argumens: 1 = hostage, 2 = killer)
+
+	EVENT_DOOR,                         // tell bots the door is moving (argumens: 1 = door, 2 = NULL)
+	EVENT_BREAK_GLASS,                  // tell bots the glass has break (argumens: 1 = glass, 2 = NULL)
+	EVENT_BREAK_WOOD,                   // tell bots the wood has break (argumens: 1 = wood, 2 = NULL)
+	EVENT_BREAK_METAL,                  // tell bots the metal/computer has break (argumens: 1 = metal/computer, 2 = NULL)
+	EVENT_BREAK_FLESH,                  // tell bots the flesh has break (argumens: 1 = flesh, 2 = NULL)
+	EVENT_BREAK_CONCRETE,               // tell bots the concrete has break (argumens: 1 = concrete, 2 = NULL)
+
+	EVENT_BOMB_PLANTED,                 // tell bots the bomb has been planted (argumens: 1 = planter, 2 = NULL)
+	EVENT_BOMB_DROPPED,                 // tell bots the bomb has been dropped (argumens: 1 = NULL, 2 = NULL)
+	EVENT_BOMB_PICKED_UP,               // let the bots hear the bomb pickup (argumens: 1 = player that pickup c4, 2 = NULL)
+	EVENT_BOMB_BEEP,                    // let the bots hear the bomb beeping (argumens: 1 = c4, 2 = NULL)
+	EVENT_BOMB_DEFUSING,                // tell the bots someone has started defusing (argumens: 1 = defuser, 2 = NULL)
+	EVENT_BOMB_DEFUSE_ABORTED,          // tell the bots someone has aborted defusing (argumens: 1 = NULL, 2 = NULL)
+	EVENT_BOMB_DEFUSED,                 // tell the bots the bomb is defused (argumens: 1 = defuser, 2 = NULL)
+	EVENT_BOMB_EXPLODED,                // let the bots hear the bomb exploding (argumens: 1 = NULL, 2 = NULL)
+
+	EVENT_HOSTAGE_USED,                 // tell bots the hostage is used (argumens: 1 = user, 2 = NULL)
+	EVENT_HOSTAGE_RESCUED,              // tell bots the hostage is rescued (argumens: 1 = rescuer (CBasePlayer *), 2 = hostage (CHostage *))
+	EVENT_ALL_HOSTAGES_RESCUED,         // tell bots the all hostages are rescued (argumens: 1 = NULL, 2 = NULL)
+
+	EVENT_VIP_ESCAPED,                  // tell bots the VIP is escaped (argumens: 1 = NULL, 2 = NULL)
+	EVENT_VIP_ASSASSINATED,             // tell bots the VIP is assassinated (argumens: 1 = NULL, 2 = NULL)
+	EVENT_TERRORISTS_WIN,               // tell bots the terrorists won the round (argumens: 1 = NULL, 2 = NULL)
+	EVENT_CTS_WIN,                      // tell bots the CTs won the round (argumens: 1 = NULL, 2 = NULL)
+	EVENT_ROUND_DRAW,                   // tell bots the round was a draw (argumens: 1 = NULL, 2 = NULL)
+	EVENT_ROUND_WIN,                    // tell carreer the round was a win (argumens: 1 = NULL, 2 = NULL)
+	EVENT_ROUND_LOSS,                   // tell carreer the round was a loss (argumens: 1 = NULL, 2 = NULL)
+	EVENT_ROUND_START,                  // tell bots the round was started (when freeze period is expired) (argumens: 1 = NULL, 2 = NULL)
+	EVENT_PLAYER_SPAWNED,               // tell bots the player is spawned (argumens: 1 = spawned player, 2 = NULL)
+	EVENT_CLIENT_CORPSE_SPAWNED,
+	EVENT_BUY_TIME_START,
+	EVENT_PLAYER_LEFT_BUY_ZONE,
+	EVENT_DEATH_CAMERA_START,
+	EVENT_KILL_ALL,
+	EVENT_ROUND_TIME,
+	EVENT_DIE,
+	EVENT_KILL,
+	EVENT_HEADSHOT,
+	EVENT_KILL_FLASHBANGED,
+	EVENT_TUTOR_BUY_MENU_OPENNED,
+	EVENT_TUTOR_AUTOBUY,
+	EVENT_PLAYER_BOUGHT_SOMETHING,
+	EVENT_TUTOR_NOT_BUYING_ANYTHING,
+	EVENT_TUTOR_NEED_TO_BUY_PRIMARY_WEAPON,
+	EVENT_TUTOR_NEED_TO_BUY_PRIMARY_AMMO,
+	EVENT_TUTOR_NEED_TO_BUY_SECONDARY_AMMO,
+	EVENT_TUTOR_NEED_TO_BUY_ARMOR,
+	EVENT_TUTOR_NEED_TO_BUY_DEFUSE_KIT,
+	EVENT_TUTOR_NEED_TO_BUY_GRENADE,
+	EVENT_CAREER_TASK_DONE,
+
+	EVENT_START_RADIO_1,
+	EVENT_RADIO_COVER_ME,
+	EVENT_RADIO_YOU_TAKE_THE_POINT,
+	EVENT_RADIO_HOLD_THIS_POSITION,
+	EVENT_RADIO_REGROUP_TEAM,
+	EVENT_RADIO_FOLLOW_ME,
+	EVENT_RADIO_TAKING_FIRE,
+	EVENT_START_RADIO_2,
+	EVENT_RADIO_GO_GO_GO,
+	EVENT_RADIO_TEAM_FALL_BACK,
+	EVENT_RADIO_STICK_TOGETHER_TEAM,
+	EVENT_RADIO_GET_IN_POSITION_AND_WAIT,
+	EVENT_RADIO_STORM_THE_FRONT,
+	EVENT_RADIO_REPORT_IN_TEAM,
+	EVENT_START_RADIO_3,
+	EVENT_RADIO_AFFIRMATIVE,
+	EVENT_RADIO_ENEMY_SPOTTED,
+	EVENT_RADIO_NEED_BACKUP,
+	EVENT_RADIO_SECTOR_CLEAR,
+	EVENT_RADIO_IN_POSITION,
+	EVENT_RADIO_REPORTING_IN,
+	EVENT_RADIO_GET_OUT_OF_THERE,
+	EVENT_RADIO_NEGATIVE,
+	EVENT_RADIO_ENEMY_DOWN,
+	EVENT_END_RADIO,
+
+	EVENT_NEW_MATCH,                    // tell bots the game is new (argumens: 1 = NULL, 2 = NULL)
+	EVENT_PLAYER_CHANGED_TEAM,          // tell bots the player is switch his team (also called from ClientPutInServer()) (argumens: 1 = switcher, 2 = NULL)
+	EVENT_BULLET_IMPACT,                // tell bots the player is shoot at wall (argumens: 1 = shooter, 2 = shoot trace end position)
+	EVENT_GAME_COMMENCE,                // tell bots the game is commencing (argumens: 1 = NULL, 2 = NULL)
+	EVENT_WEAPON_ZOOMED,                // tell bots the player is switch weapon zoom (argumens: 1 = zoom switcher, 2 = NULL)
+	EVENT_HOSTAGE_CALLED_FOR_HELP,      // tell bots the hostage is talking (argumens: 1 = listener, 2 = NULL)
+	NUM_GAME_EVENTS,
+};
+
+/**
+* Weapon secondary attack states
+* For CCSPlayerWeapon::m_iStateSecondaryAttack
+*/
+enum SecondaryAtkState
+{
+	WEAPON_SECONDARY_ATTACK_NONE = 0,
+	WEAPON_SECONDARY_ATTACK_SET,
+	WEAPON_SECONDARY_ATTACK_BLOCK
+};
+
+/**
+* Decal list for rg_decal_trace
+*/
+enum Decal
+{
+	DECAL_GUNSHOT1 = 0,
+	DECAL_GUNSHOT2,
+	DECAL_GUNSHOT3,
+	DECAL_GUNSHOT4,
+	DECAL_GUNSHOT5,
+	DECAL_LAMBDA1,
+	DECAL_LAMBDA2,
+	DECAL_LAMBDA3,
+	DECAL_LAMBDA4,
+	DECAL_LAMBDA5,
+	DECAL_LAMBDA6,
+	DECAL_SCORCH1,
+	DECAL_SCORCH2,
+	DECAL_BLOOD1,
+	DECAL_BLOOD2,
+	DECAL_BLOOD3,
+	DECAL_BLOOD4,
+	DECAL_BLOOD5,
+	DECAL_BLOOD6,
+	DECAL_YBLOOD1,
+	DECAL_YBLOOD2,
+	DECAL_YBLOOD3,
+	DECAL_YBLOOD4,
+	DECAL_YBLOOD5,
+	DECAL_YBLOOD6,
+	DECAL_GLASSBREAK1,
+	DECAL_GLASSBREAK2,
+	DECAL_GLASSBREAK3,
+	DECAL_BIGSHOT1,
+	DECAL_BIGSHOT2,
+	DECAL_BIGSHOT3,
+	DECAL_BIGSHOT4,
+	DECAL_BIGSHOT5,
+	DECAL_SPIT1,
+	DECAL_SPIT2,
+	DECAL_BPROOF1,           // Bulletproof glass decal
+	DECAL_GARGSTOMP1,        // Gargantua stomp crack
+	DECAL_SMALLSCORCH1,      // Small scorch mark
+	DECAL_SMALLSCORCH2,      // Small scorch mark
+	DECAL_SMALLSCORCH3,      // Small scorch mark
+	DECAL_MOMMABIRTH,        // Big momma birth splatter
+	DECAL_MOMMASPLAT,
+};
+
+/**
+* Player relationship return codes
+*/
+enum
+{
+	GR_NOTTEAMMATE = 0,
+	GR_TEAMMATE,
+	GR_ENEMY,
+	GR_ALLY,
+	GR_NEUTRAL,
+};
+
+// Flags for specifying extra info about player death
+enum DeathMessageFlags
+{
+	// float[3]
+	// Position where the victim was killed by the enemy
+	PLAYERDEATH_POSITION          = 0x001,
+
+	// byte
+	// Index of the assistant who helped the attacker kill the victim
+	PLAYERDEATH_ASSISTANT         = 0x002,
+
+	// short
+	// Bitsum classification for the rarity of the kill
+	// See enum KillRarity for details
+	PLAYERDEATH_KILLRARITY        = 0x004
+};
+
+// Classifying various player kill methods in the game
+enum KillRarity
+{
+	KILLRARITY_HEADSHOT         = 0x001, // Headshot
+	KILLRARITY_KILLER_BLIND     = 0x002, // Killer was blind
+	KILLRARITY_NOSCOPE          = 0x004, // No-scope sniper rifle kill
+	KILLRARITY_PENETRATED       = 0x008, // Penetrated kill (through walls)
+	KILLRARITY_THRUSMOKE        = 0x010, // Smoke grenade penetration kill (bullets went through smoke)
+	KILLRARITY_ASSISTEDFLASH    = 0x020, // Assister helped with a flash
+	KILLRARITY_DOMINATION_BEGAN = 0x040, // Killer player began dominating the victim (NOTE: this flag is set once)
+	KILLRARITY_DOMINATION       = 0x080, // Continues domination by the killer
+	KILLRARITY_REVENGE          = 0x100, // Revenge by the killer
+	KILLRARITY_INAIR            = 0x200  // Killer was in the air (skill to deal with high inaccuracy)
+};
